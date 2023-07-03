@@ -1,0 +1,188 @@
+---
+title: "CreditCardAttrition"
+output:
+  pdf_document: default
+  html_document: default
+date: "2023-06-21"
+---
+
+```{r}
+#Load the libraries required
+library(tidyverse)
+library(ggplot2)
+```
+```{r}
+#Load the dataset
+credit <- read_csv("BankChurners.csv")
+```
+
+Exploratory Data Analysis
+
+```{r}
+#View the few top and last rows of the data
+head(credit)
+tail(credit)
+```
+```{r}
+#Structure of the data
+glimpse(credit)
+```
+
+```{r}
+#Dropping the first and last two columns of the data
+credit <- credit[ , 2:21]
+colnames(credit)
+```
+```{r}
+#Searching for null values in all variables
+
+#Create a function to search null values in a variable
+null_values <- function(variable){
+  sum(is.null(variable) | is.na(variable))
+}
+
+#Apply the function to all variables in the data
+null_counts <- sapply(credit, null_values)
+
+#Print the count of null values
+null_counts
+```
+
+There are no null values in the dataset
+
+```{r}
+#Finding the duplicate rows
+duplicate_rows <- credit[duplicated(credit) , ]
+
+#Print the duplicate rows
+duplicate_rows
+```
+
+There are no duplicate rows in the dataset
+
+```{r}
+#Statistical summaries for each variable
+summary(credit)
+```
+
+
+Modelling
+
+
+```{r}
+#Converting Y variable into 0s and 1s.
+#0 - Existing Customer
+#1 - Attrited Customer
+
+credit$Attrition_Flag <- ifelse(credit$Attrition_Flag == "Existing Customer",0,1)
+```
+
+```{r}
+#Factor Analysis for Mixed Data
+library(FactoMineR)
+library(factoextra)
+
+famd_result <- FAMD(credit[,2:20], graph = FALSE)
+
+#Summary of FAMD
+summary(famd_result)
+```
+
+```{r}
+#Variable's contribution to Dimension 1
+fviz_contrib(famd_result,"var", axes=1)
+```
+
+```{r}
+#Contribution of Variables to Dimension 2
+fviz_contrib(famd_result, "var", axes=2)
+```
+
+```{r}
+#Total unique values in income category
+print(unique(credit$Income_Category))
+```
+
+```{r}
+#Converting the categories in Income_Category to numbers
+credit$Income_Category <- as.numeric(factor(credit$Income_Category, levels = c("Unknown","Less than $40K",
+                                                                               "$40K - $60K","$60K - $80K",
+                                                                               "$80K - $120K","$120K +"),
+                                            labels = c(0,1,2,3,4,5)))
+```
+
+```{r}
+#Total Unique Values in Gender Variable
+print(unique(credit$Gender))
+```
+
+```{r}
+#Converting Males to 0 and Females to 1
+credit$Gender <- ifelse(credit$Gender == "M",0,1)
+```
+
+```{r}
+#Total Unique Values in Card Category
+print(unique(credit$Card_Category))
+```
+
+```{r}
+#Assigning numbers to card categories
+#1 - Blue
+#2 - Silver
+#3- Gold
+#4 - Platinum
+
+credit$Card_Category <- as.numeric(factor(credit$Card_Category, levels = c("Blue","Silver","Gold","Platinum"),
+                                            labels = c(1,2,3,4)))
+```
+
+
+```{r}
+#Convert the target variable to factor 
+#credit$Attrition_Flag <- as.factor(credit$Attrition_Flag)
+```
+
+```{r}
+#Set the seed and split the data into training and testing parts
+set.seed(7)
+credit_index <- sample(nrow(credit), 0.6*nrow(credit), replace = FALSE)
+credit_train <- credit[credit_index, ]
+credit_test <- credit[-credit_index, ]
+```
+
+
+```{r}
+#Train simple neural network 
+library(neuralnet)
+NN1 <- neuralnet(Attrition_Flag ~ Avg_Open_To_Buy + Credit_Limit + Income_Category + Avg_Utilization_Ratio +
+                   Gender + Card_Category, credit_train, hidden = 4, lifesign = "minimal", 
+                 linear.output = FALSE, threshold = 0.1) 
+```
+
+```{r}
+#Plot the Simple Neural Network 
+plot(NN1)
+```
+
+
+
+```{r}
+#Testing the Simple Neural Network 
+predictions <- compute(NN1, credit_test[,-1])
+```
+
+
+```{r}
+#Accuracy
+library(caret)
+
+results <- data.frame(actual = credit_test$Attrition_Flag, prediction = predictions$net.result)
+results$prediction <- ifelse(results$prediction > 0.5, 1, 0)
+
+actual <- as.factor(credit_test$Attrition_Flag)
+neural_result <- as.factor(results$prediction)
+
+confusionMatrix(neural_result, actual)
+```
+
